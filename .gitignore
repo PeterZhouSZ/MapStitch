@@ -99,3 +99,13 @@ ENV/
 
 # mypy
 .mypy_cache/
+/apikeys.txt
+/coastlines_128
+/coastlines_256
+/coastlines_binary_64
+/coastlines_binary_128
+/coastlines_binary_256
+/coastlines_terrain_14
+/output
+/*.ann
+/*.hdf5
