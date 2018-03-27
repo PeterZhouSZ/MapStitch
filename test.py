@@ -77,34 +77,36 @@ if __name__ == "__main__":
 	# print(x)
 
 
-	print(np.arange(9).reshape((3, 3)))
-	orsv = [0, 1, 2, 3, 3, 0, 1, 2]
-	orsh = [3, 0, 1, 2, 0, 1, 2, 3]
+	#print(np.arange(9).reshape((3, 3)))
+	#orsv = [0, 1, 2, 3, 3, 0, 1, 2]
+	#orsh = [3, 0, 1, 2, 0, 1, 2, 3]
 
-	for iter in range(8):
-		print("*******************************")
-		neighbor_v_orientation = orsv[iter]
-		neighbor_h_orientation = orsh[iter]
+	# for iter in range(8):
+	# 	print("*******************************")
+	# 	neighbor_v_orientation = orsv[iter]
+	# 	neighbor_h_orientation = orsh[iter]
+	#
+	# 	tile = np.arange(9).reshape((3, 3))
+	#
+	# 	print("v orient={}, h orient={}".format(neighbor_v_orientation, neighbor_h_orientation))
+	# 	orientation = neighbor_v_orientation
+	#
+	# 	if (neighbor_v_orientation + 1) % 4 == neighbor_h_orientation:  # target edges form a corner, but tile is mirrored along diagonal
+	# 		tile = tile.transpose() # flip along main diagonal
+	# 		orientation = neighbor_h_orientation
+	#
+	# 		if not neighbor_h_orientation % 2 == 0: #flip is actually on the antidiagonal, +2 rotations
+	# 			orientation = (orientation + 2) % 4
+	#
+	# 	#print(tile)
+	# 	print("orientation={}".format(orientation))
+	# 	final_tile = tile
+	# 	if orientation > 0:
+	# 		final_tile = np.rot90(final_tile, orientation)
+	#
+	# 	print(final_tile)
 
-		tile = np.arange(9).reshape((3, 3))
 
-		print("v orient={}, h orient={}".format(neighbor_v_orientation, neighbor_h_orientation))
-		orientation = neighbor_v_orientation
-
-		if (neighbor_v_orientation + 1) % 4 == neighbor_h_orientation:  # target edges form a corner, but tile is mirrored along diagonal
-			tile = tile.transpose() # flip along main diagonal
-			orientation = neighbor_h_orientation
-
-			if not neighbor_h_orientation % 2 == 0: #flip is actually on the antidiagonal, +2 rotations
-				orientation = (orientation + 2) % 4
-
-		#print(tile)
-		print("orientation={}".format(orientation))
-		final_tile = tile
-		if orientation > 0:
-			final_tile = np.rot90(final_tile, orientation)
-
-		print(final_tile)
 	# possible_neighbors_x_idxs = np.array([8, 7, 10, 2, 19, 8, 7, 10, 3, 11, 5, 13, 19, 4, 14, 3, 15, 13, 5, 4, 14, 15, 9, 1, 20, 1, 9, 21, 2, 20, 12, 21, 11, 12])
 	# possible_neighbors_y_idxs = np.array([20, 21, 8, 7, 19, 8, 13, 10, 3, 19, 13, 14, 10, 3, 7, 1, 11, 5, 4, 14, 9, 2, 15, 11, 5, 4, 9, 12, 2, 15, 1, 12, 20, 21, 17, 16, 17, 18, 16, 18])
 	#
@@ -130,66 +132,90 @@ if __name__ == "__main__":
 	# 	if len(nz[0])>0:
 	# 		print(nz[0][0])
 
-	data_dir = 'coastlines_128/'
-	size = 64
+	# data_dir = 'coastlines_128/'
+	# size = 64
+	#
+	# if not isdir(data_dir):
+	# 	raise Exception("Data directory doesn't exist!")
+	#
+	# files_in_directory = list(glob.glob(data_dir + '*.png'))
+	# num_images = len(files_in_directory)
+	# image_data = np.empty([num_images, size, size, 3])
+	# idx = 0
+	#
+	# for filename in tqdm(files_in_directory):  # import all png
+	#
+	# 	image = np.array(Image.open(filename))#[:, :, 0]
+	#
+	# 	image_data[idx] = image
+	# 	idx += 1
+	#
+	#
+	# shuffle_data = False
+	#
+	# # to shuffle data
+	# if shuffle_data:
+	# 	shuffle(image_data)
+	#
+	#
+	# max_val = np.amax(image_data)
+	# min_val = np.amin(image_data)
+	# print('img range: {} {}'.format(min_val, max_val))
+	#
+	# hdf5_path = 'coastlines_binary_64_images.hdf5'  # 'coastlines_binary_128_images.hdf5'  # address to where you want to save the hdf5 file
+	# hdf5_file = h5py.File(hdf5_path, mode='w')
+	# imgs_shape = image_data.shape  # (num_imgs, 64, 64)
+	# hdf5_file.create_dataset("images", imgs_shape, dtype='uint8')
+	# hdf5_file["images"][...] = image_data
+	#
+	# hdf5_file.close()
+	# print('...finished creating hdf5')
+	#
 
-	if not isdir(data_dir):
-		raise Exception("Data directory doesn't exist!")
 
-	files_in_directory = list(glob.glob(data_dir + '*.png'))
-	num_images = len(files_in_directory)
-	image_data = np.empty([num_images, size, size, 3])
-	idx = 0
+	# num_images = 10
+	#
+	# a = np.floor(np.arange(0, num_images, 0.25))
+	# print(a.shape)
+	# print(a)
+	# b = np.tile(range(4), (1, num_images))[0]
+	# print(b.shape)
+	# print(b)
+	# c = np.concatenate((a, b), axis=0)
+	# print(c)
+	# d = np.column_stack((np.floor(np.arange(0, num_images, 0.25)), np.tile(range(4), (1, num_images))[0]))
+	# print(d)
+	#
+	num_tiles = 12
+	success = np.array([True, True, True, True, True, True, True, True, False, False, False, False ])
+	print(success)
 
-	for filename in tqdm(files_in_directory):  # import all png
-
-		image = np.array(Image.open(filename))#[:, :, 0]
-
-		image_data[idx] = image
-		idx += 1
-
-
-	shuffle_data = False
-
-	# to shuffle data
-	if shuffle_data:
-		shuffle(image_data)
-
-
-	max_val = np.amax(image_data)
-	min_val = np.amin(image_data)
-	print('img range: {} {}'.format(min_val, max_val))
-
-	hdf5_path = 'coastlines_binary_64_images.hdf5'  # 'coastlines_binary_128_images.hdf5'  # address to where you want to save the hdf5 file
-	hdf5_file = h5py.File(hdf5_path, mode='w')
-	imgs_shape = image_data.shape  # (num_imgs, 64, 64)
-	hdf5_file.create_dataset("images", imgs_shape, dtype='uint8')
-	hdf5_file["images"][...] = image_data
-
-	hdf5_file.close()
-	print('...finished creating hdf5')
-
-
-
-
-	hdf5_path = 'coastlines_binary_64_images.hdf5'  # address to where you want to save the hdf5 file
-	hdf5_file = h5py.File(hdf5_path, "r")
-	# Total number of samples
-	images = hdf5_file["images"]
-	max_val = np.amax(images)
-	min_val = np.amin(images)
-	print('img range: {} {}'.format(min_val, max_val))
-
-	idx = np.random.randint(0, images.shape[0], size=16)
-	#idx = range(16)
-	#plt.figure()
-	fig, axes = plt.subplots(4, 4, sharex=True, sharey=True, figsize=(14, 14), )
-	for ii, ax in zip(idx, axes.flatten()):
-		ax.imshow(images[ii], aspect='equal', cmap='gray')  # [:,:,:]
-		ax.xaxis.set_visible(False)
-		ax.yaxis.set_visible(False)
-	plt.subplots_adjust(wspace=0, hspace=0)
-	plt.show()
+	#print(np.random.randint(2, size=10))
+	current_index = 8
+	num_backtrack = 2
+	success[current_index - num_backtrack:] = [ False ] * (num_tiles - current_index + num_backtrack)
+	print(success)
+	#print(np.tile(range(3), (1, 10)))
+	#
+	#
+	# hdf5_path = 'coastlines_binary_64_images.hdf5'  # address to where you want to save the hdf5 file
+	# hdf5_file = h5py.File(hdf5_path, "r")
+	# # Total number of samples
+	# images = hdf5_file["images"]
+	# max_val = np.amax(images)
+	# min_val = np.amin(images)
+	# print('img range: {} {}'.format(min_val, max_val))
+	#
+	# idx = np.random.randint(0, images.shape[0], size=16)
+	# #idx = range(16)
+	# #plt.figure()
+	# fig, axes = plt.subplots(4, 4, sharex=True, sharey=True, figsize=(14, 14), )
+	# for ii, ax in zip(idx, axes.flatten()):
+	# 	ax.imshow(images[ii], aspect='equal', cmap='gray')  # [:,:,:]
+	# 	ax.xaxis.set_visible(False)
+	# 	ax.yaxis.set_visible(False)
+	# plt.subplots_adjust(wspace=0, hspace=0)
+	# plt.show()
 
 	# for idx, filename in enumerate(files):
 	# 	image = Image.open(filename)
