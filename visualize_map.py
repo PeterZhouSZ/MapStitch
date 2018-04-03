@@ -4,7 +4,7 @@ from mpl_toolkits.basemap import Basemap
 import matplotlib.pyplot as plt
 import numpy as np
 import re
-
+from lonlat2color import lonlat2rgba
 # make sure the value of resolution is a lowercase L,
 #  for 'low', not a numeral 1
 my_map = Basemap(projection='robin', lat_0=0, lon_0=-100, resolution='l', area_thresh=1000.0)
@@ -30,6 +30,8 @@ for idx, filename in enumerate(tqdm(files_in_directory)):
 
 lats, lons = zip(* coordinates)
 x, y = my_map(lons, lats)
-my_map.plot(x, y, 'bo', markersize=1)
+colors = [ lonlat2rgba(lon, lat) for lon, lat in zip(lons, lats) ]
+#my_map.plot(x, y, c=colors, markersize=1)
+sc = plt.scatter(x,y, c=colors )
 
 plt.show()

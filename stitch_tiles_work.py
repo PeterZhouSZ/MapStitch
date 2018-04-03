@@ -6,6 +6,7 @@
 from PIL import Image
 import matplotlib
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import random
 import re
 import numpy as np
@@ -20,6 +21,9 @@ from annoy import AnnoyIndex
 import os.path
 import time
 import cProfile
+from lonlat2color import lonlat2rgba
+
+from matplotlib.collections import PatchCollection
 from collections import OrderedDict
 
 # constants
@@ -37,6 +41,53 @@ BL = 3
 # SPOTIFY ANNOY PYTHON LIBRARY (UNUSABLE BECAUSE ONLY RETURNS 10 NN)
 #######################################################################################################################
 ##TODO do simultaneously (stupid!)
+
+def generate_hashes(images, filename_corners, filename_edges):
+	corner_index = AnnoyIndex(2 * images.shape[1], metric='euclidean')  # Length of item vector that will be indexed
+	edge_index = AnnoyIndex(images.shape[1], metric='euclidean')  # Length of item vector that will be indexed
+
+	full_filename_corners = os.path.join(os.getcwd(), filename_corners)
+	full_filename_edges = os.path.join(os.getcwd(), filename_edges)
+
+	identifiers = np.column_stack((np.floor(np.arange(0, num_images, 0.25)), np.tile(range(4), (1, num_images))[0]))
+
+	if os.path.isfile(full_filename_corners) and os.path.isfile(full_filename_edges):
+		corner_index.load(full_filename_corners)
+		edge_index.load(full_filename_edges)
+
+		return corner_index, edge_index, identifiers
+	ct = 0
+	for idx, image in enumerate(tqdm(images)):
+		# for i in xrange(1000):
+		(top, right, bottom, left) = get_all_edges_from_array(image)
+
+		edge_index.add_item(ct, top)
+		edge_index.add_item(ct + 1, right)
+		edge_index.add_item(ct + 2, bottom)
+		edge_index.add_item(ct + 3, left)
+
+		corner_left_top = np.concatenate([left, top])
+		corner_top_right = np.concatenate([top, right])
+		corner_right_bottom = np.concatenate([right, bottom])
+		corner_bottom_left = np.concatenate([bottom, left])
+		# adding one to each edge to avoid zero vector (which annoy doesn't handle)
+		corner_index.add_item(ct, corner_left_top)
+		corner_index.add_item(ct + 1, corner_top_right)
+		corner_index.add_item(ct + 2, corner_right_bottom)
+		corner_index.add_item(ct + 3, corner_bottom_left)
+		# identifiers[ct] = [idx, 0]
+		# identifiers[ct + 1] = [idx, 1]
+		# identifiers[ct + 2] = [idx, 2]
+		# identifiers[ct + 3] = [idx, 3]
+		ct += 4
+	corner_index.build(10)  # 10 trees
+	edge_index.build(10)  # 10 trees
+
+	corner_index.save(filename_corners)
+	edge_index.save(filename_edges)
+
+	return corner_index, edge_index, identifiers
+
 def generate_edge_hash(images, filename):
 	engine = AnnoyIndex(images.shape[1], metric='euclidean')  # Length of item vector that will be indexed
 
@@ -250,6 +301,32 @@ def get_image_from_canvas(canvas, tiles_w, tiles_h):
 
 	return image
 
+def get_annotations(tiles_w, image_size, indices, coordinates):
+	patches = []
+	colors = []
+	for index in range(canvas.shape[0]):
+		x = index % tiles_w
+		y = int(np.floor(index / tiles_w))
+
+		tile = indices[index]
+		if tile == -1:
+			continue
+		else:
+			(lat, lon) = coordinates[tile]
+			fc = lonlat2rgba(lon, lat)
+			rect = mpatches.Rectangle((x * image_size, y * image_size), image_size, image_size)
+			patches.append(rect)
+			colors.append(fc)
+			#image[((y + 1) * image_size, x * image_size):(x + 1) * image_size] = canvas[index]
+	#colors = 100 * np.random.rand(len(patches))
+	collection = PatchCollection(patches, alpha=0.35)
+	collection.set_facecolors(colors)
+	collection.set_edgecolors(colors)
+	collection.set_linewidth(0.1)
+	#collection.set_array(np.array(colors))
+	return collection
+
+
 def select_tile(tile, list_index, tile_index, orientation, canvas, indices, success):
 	indices[list_index] = tile_index
 	success[list_index] = True
@@ -330,16 +407,16 @@ def generate_map(tiles_w, tiles_h):
 			top_all_water = np.array_equal(tile_top_bottom_edge, np.zeros(image_size))
 			top_all_land = np.array_equal(tile_top_bottom_edge, 255*np.ones(image_size))
 
-		if left_all_water and top_all_water and np.random.rand(1) < 0.9:  # 70% chance of all water tile
-			select_tile(all_water, current_index, -1, 0, canvas, indices, success)
-			continue
-		elif left_all_land and top_all_land and np.random.rand(1) < 0.95:  # 95% chance of all land tile
-			select_tile(all_land, current_index, -1, 0, canvas, indices, success)
-			continue
+		# if left_all_water and top_all_water and np.random.rand(1) < 0.9:  # 70% chance of all water tile
+		# 	select_tile(all_water, current_index, -1, 0, canvas, indices, success)
+		# 	continue
+		# elif left_all_land and top_all_land and np.random.rand(1) < 0.95:  # 95% chance of all land tile
+		# 	select_tile(all_land, current_index, -1, 0, canvas, indices, success)
+		# 	continue
 
 		if x == 0:  # handle first column (disregard left neighbor)
 			list_idxs_y, distances_y = get_nearest_edges(edge_hash, tile_top_bottom_edge, num_results=max_results, max_distance=max_distance)
-			matches_y, orientations = zip(*edge_identifiers[list_idxs_y])
+			matches_y, orientations = zip(*identifiers[list_idxs_y])
 			#matches_y_dict = dict(zip(matches_y, zip(orientations, distances_y)))
 
 			best_matches_y = []
@@ -361,7 +438,7 @@ def generate_map(tiles_w, tiles_h):
 		elif y == 0:  # handle first row (disregard top neighbor)
 
 			list_idxs_x, distances_x = get_nearest_edges(edge_hash, tile_left_right_edge, num_results=max_results, max_distance=max_distance)
-			matches_x, orientations = zip(*edge_identifiers[list_idxs_x])
+			matches_x, orientations = zip(*identifiers[list_idxs_x])
 			#matches_x_dict = dict(zip(matches_x, zip(orientations, distances_x)))
 
 			best_matches_x = []
@@ -383,7 +460,7 @@ def generate_map(tiles_w, tiles_h):
 		else:
 			corner = np.concatenate([tile_left_right_edge, tile_top_bottom_edge])
 			list_idxs, distances = get_nearest_corners(corner_hash, corner, num_results=max_results, max_distance=max_distance)
-			matches, orientations = zip(*corner_identifiers[list_idxs])
+			matches, orientations = zip(*identifiers[list_idxs])
 
 			best_matches = []
 			for idx, tile in enumerate(matches):  # find all eligible tiles that have similar low distance
@@ -409,12 +486,16 @@ def generate_map(tiles_w, tiles_h):
 
 		# do stochastic backtracking
 		failure = backtrack(failure, current_index, success, indices)
-	return canvas
+	return canvas, indices
 
 
-def save_map(canvas, tiles_w, tiles_h):
-	image = get_image_from_canvas(canvas, tiles_w, tiles_h)
+def save_map(canvas, tiles_w, tiles_h, pc):
+
 	timestr = time.strftime("%d_%m_%H%M")
+	filename = str(image_size) + 'x' + str(image_size) + '_' + timestr + '_' + str(tiles_w) + 'x' + str(tiles_h)
+
+	image = get_image_from_canvas(canvas, tiles_w, tiles_h)
+
 	plt.axis('off')
 	plt.imshow(image, origin="upper", cmap="gray")
 	plt.gca().set_axis_off()
@@ -423,28 +504,32 @@ def save_map(canvas, tiles_w, tiles_h):
 	plt.gca().xaxis.set_major_locator(matplotlib.ticker.NullLocator())
 	plt.gca().yaxis.set_major_locator(matplotlib.ticker.NullLocator())
 
-	filename = str(image_size) + 'x' + str(image_size) + '_' + timestr + '_' + str(tiles_w) + 'x' + str(tiles_h)
 	plt.savefig('output/' + filename + '.png', dpi=1000, bbox_inches='tight', pad_inches = 0) # my_dpi
+	plt.gca().add_collection(pc)
+	plt.savefig('output/' + filename + '_annotated.png', dpi=1000, bbox_inches='tight', pad_inches=0)  # my_dpi
 	plt.show()
-
 
 #pr = cProfile.Profile()
 #pr.enable()
 
 
-database_path = 'coastlines_binary_128_images.hdf5'  # address of hdf5 data file ##'binary_test_data.hdf5'
+database_path = 'coastlines_binary_64_images.hdf5'  # address of hdf5 data file ##'binary_test_data.hdf5'
 image_size = int(re.search(r'\d+', database_path).group()) #auto-extract integer from string
 hdf5_file = h5py.File(database_path , "r")
 
 # load images from hdf5
 images = hdf5_file["images"]
+coordinates = hdf5_file["coordinates"]
 num_images = images.shape[0]
 print('{} images found...'.format(num_images))
 
 # engine = generate_lsh(images)
 # engine = generate_nearpy_hash(images)
-edge_hash, edge_identifiers = generate_edge_hash(images, "hash_database_" + str(image_size) + "_edges.ann")
-corner_hash, corner_identifiers = generate_corner_hash(images, "hash_database_" + str(image_size) + "_corners.ann")
+
+corner_hash, edge_hash, identifiers = generate_hashes(images, "hash_database_" + str(image_size) + "_corners.ann", "hash_database_" + str(image_size) + "_edges.ann")
+#
+# edge_hash, edge_identifiers = generate_edge_hash(images, "hash_database_" + str(image_size) + "_edges.ann")
+# corner_hash, corner_identifiers = generate_corner_hash(images, "hash_database_" + str(image_size) + "_corners.ann")
 
 # parameters
 max_distance = 4096 #1024#
@@ -460,8 +545,10 @@ tiles_h = 30
 
 fig = plt.figure(figsize=((image_size * tiles_h)/1000, (image_size * tiles_w)/1000), dpi=200)
 plt.axis('off')
-canvas = generate_map(tiles_w, tiles_h)
-save_map(canvas, tiles_w, tiles_h)
+canvas, indices = generate_map(tiles_w, tiles_h)
+
+pc = get_annotations(tiles_w, image_size, indices, coordinates)
+save_map(canvas, tiles_w, tiles_h, pc)
 
 #pr.disable()
 # after your program ends
