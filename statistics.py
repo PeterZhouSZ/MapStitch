@@ -12,7 +12,9 @@ import h5py
 import numpy as np
 from itertools import groupby
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 from tqdm import tqdm
+import re
 
 #WATER_MIN_TERRAIN = np.array([0, 0, 0], dtype=np.uint8) #minimum value of black pixel in RGB order
 #WATER_MAX_TERRAIN = np.array([5, 5, 5], dtype=np.uint8) #maximum value of black pixel in RGB order
@@ -85,26 +87,16 @@ def create_dir(name):
 		
 if __name__ == "__main__":
 	image_list = []
-	image_size = 128
-	#filename_list = []
-	#directory_128 = os.path.join(os.getcwd(), 'coastlines_128') #'coastlines_binary_128')
-	
-	#create_dir(directory_128)
 
-
-	#bins_percent_land = np.zeros(100)
-	#bins_num_changes = np.zeros(64)
-	percent_land = []
+	amount_land = []
 	num_changes = []
 
-	hdf5_path = 'coastlines_binary_128_images.hdf5'  # address of hdf5 data file ##'binary_test_data.hdf5'
+	hdf5_path = 'data/coastlines_binary_128_images.hdf5'  # address of hdf5 data file ##'binary_test_data.hdf5'
+	image_size = int(re.search(r'\d+', hdf5_path).group())  # auto-extract integer from string
 	hdf5_file = h5py.File(hdf5_path, "r")
 
 	# load images from hdf5
 	images = hdf5_file["images"]
-
-	# take a subset: only every 4th image
-	# images = images[0::4]
 
 	num_images = images.shape[0]
 
@@ -114,17 +106,17 @@ if __name__ == "__main__":
 		bottom = np.flip(image[image_size - 1, :], 0)  # BOTTOM, flip to preserve clockwise order
 		left = np.flip(image[:, 0], 0)  # LEFT, flip to preserve clockwise order
 
-		top = (top / 255).astype(int) #normalize and round
-		right = (right / 255).astype(int)  # normalize and round
-		bottom = (bottom / 255).astype(int)  # normalize and round
-		left = (left / 255).astype(int)  # normalize and round
+		top = np.round(top / 255).astype(int) #normalize and round
+		right = np.round(right / 255).astype(int)  # normalize and round
+		bottom = np.round(bottom / 255).astype(int)  # normalize and round
+		left = np.round(left / 255).astype(int)  # normalize and round
 
-		top_percent_land = int(100 * np.count_nonzero(top) / image_size)
-		right_percent_land = int(100 * np.count_nonzero(right) / image_size)
-		bottom_percent_land = int(100 * np.count_nonzero(bottom) / image_size)
-		left_percent_land = int(100 * np.count_nonzero(left) / image_size)
+		top_amount_land = np.count_nonzero(top)
+		right_amount_land = np.count_nonzero(right)
+		bottom_amount_land = np.count_nonzero(bottom)
+		left_amount_land = np.count_nonzero(left)
 
-		percent_land.extend([top_percent_land, right_percent_land, bottom_percent_land, left_percent_land])
+		amount_land.extend([top_amount_land, right_amount_land, bottom_amount_land, left_amount_land])
 
 		top_grouped = [x[0] for x in groupby(top)]
 		right_grouped = [x[0] for x in groupby(right)]
@@ -134,11 +126,25 @@ if __name__ == "__main__":
 		num_changes.extend([len(top_grouped)-1, len(right_grouped)-1, len(bottom_grouped)-1, len(left_grouped)-1])
 
 	#hist_percentage, bin_edges = np.histogram(percent_land, bins=np.arange(0, 100, 2))
-	plt.hist(percent_land, bins=np.arange(0, 100))  # arguments are passed to np.histogram
-	plt.title("Percentage of land in edges")
+	plt.hist(amount_land, bins=np.arange(1, image_size))  # arguments are passed to np.histogram
+	plt.title("Amount of land pixels in edges (without 0)")
+	#plt.yscale('log')
+	plt.show()
+
+	# hist_percentage, bin_edges = np.histogram(percent_land, bins=np.arange(0, 100, 2))
+	plt.hist(num_changes, bins=np.arange(1, max(num_changes)))  # arguments are passed to np.histogram
+	#plt.yscale('log')
+	plt.title("Number of land/water changes on edges (without 0)")
+	plt.show()
+
+	plt.hist(amount_land, bins=np.arange(0, image_size))  # arguments are passed to np.histogram
+	plt.title("Amount of land pixels in edges (log scale)")
+	plt.yscale('log')
 	plt.show()
 
 	#hist_percentage, bin_edges = np.histogram(percent_land, bins=np.arange(0, 100, 2))
 	plt.hist(num_changes, bins=np.arange(0, max(num_changes)))  # arguments are passed to np.histogram
-	plt.title("Number of land/water changes on edges")
+	plt.yscale('log')
+	plt.title("Number of land/water changes on edges (log scale)")
+
 	plt.show()

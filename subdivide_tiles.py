@@ -17,14 +17,14 @@ import matplotlib.pyplot as plt
 #WATER_MIN_TERRAIN = np.array([0, 0, 0], dtype=np.uint8) #minimum value of black pixel in RGB order
 #WATER_MAX_TERRAIN = np.array([5, 5, 5], dtype=np.uint8) #maximum value of black pixel in RGB order
 
-WATER_MIN_TERRAIN = np.array([155, 195, 230], dtype=np.uint8) #minimum value of blue pixel in RGB order
-WATER_MAX_TERRAIN = np.array([215, 240, 255], dtype=np.uint8) #maximum value of blue pixel in RGB order
+WATER_MIN_TERRAIN = np.array([155, 195, 227], dtype=np.uint8) #minimum value of blue pixel in RGB order
+WATER_MAX_TERRAIN = np.array([220, 240, 255], dtype=np.uint8) #maximum value of blue pixel in RGB order
 
 def resize_tile(tile, width, height):
 	return tile.resize((width, height), Image.ANTIALIAS)  
 
 def subdivide(image, swidth, sheight):
-	width, height = image.size
+	width, height = image.shape
 
 	nwidth = int(np.floor(width / swidth))
 	nheight = int(np.floor(height / sheight))
@@ -36,8 +36,9 @@ def subdivide(image, swidth, sheight):
 	out = []
 	for sw in range(nwidth):
 		for sh in range(nheight):
-			box = (sw*swidth, sh*sheight, (sw+1)*swidth, (sh+1)*sheight)
-			subimg = image.crop(box)
+			subimg = image[sh*sheight:(sh+1)*sheight,sw*swidth:(sw+1)*swidth]
+			#box = (sw*swidth, sh*sheight, (sw+1)*swidth, (sh+1)*sheight)
+			#subimg = image.crop(box)
 			out.append(subimg)
 	# box_1 = (0, 0, hwidth, hheight)
 	# box_2 = (0, hheight, hwidth, height)
@@ -51,11 +52,11 @@ def subdivide(image, swidth, sheight):
 	return out #[sub_1, sub_2, sub_3, sub_4]
 	
 def convert_tile_to_binary(npimage, mask):
-	npimage[np.where(blue_mask == [000])] = [255,255,255] 	# blue image parts turn black
-	npimage[np.where(blue_mask == [255])] = [000,000,000]   # everything else turns white
+	npimage[np.where(mask == [000])] = [255, 255, 255] 	  # blue image parts turn black
+	npimage[np.where(mask == [255])] = [  0,   0,   0]   # everything else turns white
 
 	#convert back to numpy image
-	return npimage#Image.fromarray(npimage)
+	return npimage[:, :, 0] #Image.fromarray(npimage)
 
 #remove lake and river tiles	
 def strictly_coastline(mask, size):
@@ -67,27 +68,6 @@ def strictly_coastline(mask, size):
 	#print('sc: ', water_percent)
 	return water_percent > 0.05
 
-# Print iterations progress
-def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█'):
-    """
-    Call in a loop to create terminal progress bar
-    @params:
-        iteration   - Required  : current iteration (Int)
-        total       - Required  : total iterations (Int)
-        prefix      - Optional  : prefix string (Str)
-        suffix      - Optional  : suffix string (Str)
-        decimals    - Optional  : positive number of decimals in percent complete (Int)
-        length      - Optional  : character length of bar (Int)
-        fill        - Optional  : bar fill character (Str)
-    """
-    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
-    filledLength = int(length * iteration // total)
-    bar = fill * filledLength + '-' * (length - filledLength)
-    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '\r')
-    # Print New Line on Complete
-    if iteration == total: 
-        print()
-
 def create_dir(name):		
 	try:
 		os.makedirs(name)
@@ -97,89 +77,118 @@ def create_dir(name):
 if __name__ == "__main__":
 	image_list = []
 	#filename_list = []
-	#directory_out = os.path.join(os.getcwd(), 'new_64') #'coastlines_binary_128')
+	directory_out = os.path.join(os.getcwd(), 'coastlines_binary_128') #'coastlines_terrain_square') #
 	
 	#create_dir(directory_128)
 	
-	files = list(glob.iglob('coastlines_terrain_14/*.png' ))
+	files = list(glob.iglob('coastlines_terrain_square/*.png' ))
 
-	size = 64
-	subdiv = 10
-	multiplier = subdiv*subdiv
-	shuffle_data = True
-	num_images = len(files) * multiplier
+	#size = 128
+	#subdiv = 5
+	sizes   = [256]#128, 64, 32] #[256, 128, 64, 32]
+	subdivs = [2]# 4,  8, 16] #[2, 5, 10, 20]
 
-	image_data = np.empty([num_images, size, size])
-	coordinates = np.empty((num_images, 2))
 
-	print('{} images found...'.format(num_images))
-	#printProgressBar(0, num_images, prefix = 'Progress:', suffix = 'complete', length = 50)
-	
-	for idx, filename in tqdm(enumerate(files)): #glob.glob('coastlines_terrain_14/*.png'): #assuming png format
-		image = Image.open(filename)
-		image = image.resize((640, 640), Image.ANTIALIAS)
+	for i in range(len(sizes)):
+		size = sizes[i]
+		subdiv = subdivs[i]
 
-		#print(image.size)
-		subimgs = subdivide(image, size, size)
+		all_water = np.zeros((size, size))
+		all_land = np.ones((size, size))
 
-		filename = filename.split('\\')[1]
-		m = re.match(r'14_(.*),(.*)_terrain.png', filename)
-		lat = float(m.group(1))
-		lon = float(m.group(2))
+		multiplier = subdiv*subdiv
+		shuffle_data = True
+		num_images = len(files) * multiplier
 
-		for subidx, subimg in enumerate(subimgs):
-			cimage = subimg.convert("RGB")
+		image_data = np.empty([num_images, size, size])
+		coordinates = np.empty((num_images, 2))
+
+		print('{} images found...'.format(num_images))
+
+		image_data[0] = all_water
+		image_data[1] = all_land
+
+		idx = 2
+		all_equal = 0
+		for filename in tqdm(files): #glob.glob('coastlines_terrain_14/*.png'): #assuming png format
+			#if idx > 1000:
+		    #		break
+
+			image = Image.open(filename)
+			cimage = image.convert("RGB")
 			npimage = np.array(cimage)
-			#mask blue parts in image
+
 			blue_mask = cv2.inRange(npimage, WATER_MIN_TERRAIN, WATER_MAX_TERRAIN)
-		
-			#width, height = subimg.size
-			#if subimg.size != (64, 64):
-			#	print('error!')
-
-			#water = cv2.countNonZero(blue_mask)
-			#water_percent = water / (width*height)
-			
-			# #print('w: ', water_percent)
-			# if water_percent < 0.05 or water_percent > 0.95: #reject tile
-			# 	continue
-			#
-			# if not strictly_coastline(blue_mask, image.size): #reject tile
-			# 	continue
-			
 			grayscale = convert_tile_to_binary(npimage, blue_mask)
-			#subfilename = filename.split('\\')[1].rsplit('.', 1)[0] + '_' + str(subidx) + '.png'
-			#im.save(os.path.join(directory_out, subfilename), 'PNG')
 
-			grayscale = grayscale[:, :, 0]
-			image_data[idx * multiplier + subidx] = grayscale
+			#grayscale = grayscale.resize((512, 512), Image.ANTIALIAS)
+			#print(image.size)
+			subimgs = subdivide(grayscale, size, size)
 
-			#subfilename = filename.rsplit('.', 1)[0] + '_' + str(subidx) + '.png'
-			coordinates[idx * multiplier + subidx] = (lat, lon)
+			filename = filename.split('\\')[1]
+			m = re.match(r'14_(.*),(.*)_terrain.png', filename)
+			lat = float(m.group(1))
+			lon = float(m.group(2))
 
-		image.close()
+			for subidx, subimg in enumerate(subimgs):
+				#gray_im = Image.fromarray(subimg)
 
-	# to shuffle data
-	if shuffle_data:
-		shuffled_indices = np.arange(num_images)
-		# combined = list(zip(image_data, coordinates))
-		random.shuffle(shuffled_indices)
+				#filename_complete = os.path.join(directory_out, filename)
+				#subimg.save(filename_complete)
+				if len(set(subimg.flatten())) <= 1: # all zeros or all ones
+					all_equal += 1
+					continue
 
-		image_data = [image_data[i] for i in shuffled_indices]
-		coordinates = [coordinates[i] for i in shuffled_indices]
-	# shuffle(image_data)
+				#image_data[idx * multiplier + subidx] = subimg
+				#coordinates[idx * multiplier + subidx] = (lat, lon)
+				image_data[idx] = subimg
+				coordinates[idx] = (lat, lon)
+				idx += 1
 
-	max_val = np.amax(image_data)
-	min_val = np.amin(image_data)
-	print('img range: {} {}'.format(min_val, max_val))
+			image.close()
 
-	hdf5_path = 'coastlines_binary_' + str(size) + '_images.hdf5'
-	hdf5_file = h5py.File(hdf5_path, mode='w')
-	imgs_shape = (num_images, size, size)  # image_data.shape  #
-	hdf5_file.create_dataset("images", imgs_shape, dtype='uint8')
-	hdf5_file["images"][...] = image_data
+		#unique_images, unique_indices = np.unique(image_data, axis=0, return_index=True)
+		#unique_coordinates = coordinates[unique_indices]
 
-	hdf5_file.create_dataset("coordinates", data=coordinates)
+		#image_data = unique_images
+		#coordinates = unique_coordinates
+		image_data = image_data[0:idx]
+		coordinates = coordinates[0:idx]
+		num_images = image_data.shape[0]
 
-	hdf5_file.close()
-	print('...finished creating hdf5')
+		print('did not consider {} all land/water images in dataset...'.format(all_equal))
+
+		# to shuffle data
+		if shuffle_data:
+			shuffled_indices = np.arange(num_images)
+			# combined = list(zip(image_data, coordinates))
+			random.shuffle(shuffled_indices)
+
+			image_data = [image_data[i] for i in shuffled_indices]
+			coordinates = [coordinates[i] for i in shuffled_indices]
+		# shuffle(image_data)
+
+		max_val = np.amax(image_data)
+		min_val = np.amin(image_data)
+		print('img range: {} {}'.format(min_val, max_val))
+
+		hdf5_path = 'data/coastlines_binary_cleaned_' + str(size) + '_images.hdf5'
+		hdf5_file = h5py.File(hdf5_path, mode='w')
+		imgs_shape = (num_images, size, size)  # image_data.shape  #
+		if not "images" in hdf5_file: #creating new hdf5 file
+			#hdf5_file.create_dataset("images", data=image_data)
+			hdf5_file.create_dataset("images", imgs_shape, dtype='uint8')
+			hdf5_file["images"][...] = image_data
+
+			hdf5_file.create_dataset("coordinates", data=coordinates)
+		else: #append (since file exists already)
+			hdf5_file["images"].resize((hdf5_file["images"].shape[0] + num_images), axis=0)
+			hdf5_file["images"][-hdf5_file["images"].shape[0]:] = image_data
+
+			hdf5_file["coordinates"].resize((hdf5_file["coordinates"].shape[0] + num_images), axis=0)
+			hdf5_file["coordinates"][-hdf5_file["coordinates"].shape[0]:] = coordinates
+
+
+		print('...file contains {} images now'.format(hdf5_file["images"].shape[0]))
+		hdf5_file.close()
+		print('...finished creating hdf5')

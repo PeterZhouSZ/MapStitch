@@ -3,7 +3,9 @@
 
 
 # imports
-from PIL import Image
+import glob
+from PIL import Image, ImageDraw
+import PIL.ImageOps
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -15,13 +17,13 @@ import h5py
 from IPython import display
 from tqdm import tqdm
 from tqdm import trange
-from nearpy import Engine
-from nearpy.hashes import RandomBinaryProjections
-from annoy import AnnoyIndex
+#from nearpy import Engine
+#from nearpy.hashes import RandomBinaryProjections
 import os.path
 import time
 import cProfile
 from lonlat2color import lonlat2rgba
+from evaluate_nearest_neighbor import generate_hashes, generate_tile_hash, get_nearest_tiles, get_nearest_corners, get_nearest_edges
 
 from matplotlib.collections import PatchCollection
 from collections import OrderedDict
@@ -37,142 +39,7 @@ TR = 1
 RB = 2
 BL = 3
 
-#######################################################################################################################
-# SPOTIFY ANNOY PYTHON LIBRARY (UNUSABLE BECAUSE ONLY RETURNS 10 NN)
-#######################################################################################################################
-##TODO do simultaneously (stupid!)
-
-def generate_hashes(images, filename_corners, filename_edges):
-	corner_index = AnnoyIndex(2 * images.shape[1], metric='euclidean')  # Length of item vector that will be indexed
-	edge_index = AnnoyIndex(images.shape[1], metric='euclidean')  # Length of item vector that will be indexed
-
-	full_filename_corners = os.path.join(os.getcwd(), filename_corners)
-	full_filename_edges = os.path.join(os.getcwd(), filename_edges)
-
-	identifiers = np.column_stack((np.floor(np.arange(0, num_images, 0.25)), np.tile(range(4), (1, num_images))[0]))
-
-	if os.path.isfile(full_filename_corners) and os.path.isfile(full_filename_edges):
-		corner_index.load(full_filename_corners)
-		edge_index.load(full_filename_edges)
-
-		return corner_index, edge_index, identifiers
-	ct = 0
-	for idx, image in enumerate(tqdm(images)):
-		# for i in xrange(1000):
-		(top, right, bottom, left) = get_all_edges_from_array(image)
-
-		edge_index.add_item(ct, top)
-		edge_index.add_item(ct + 1, right)
-		edge_index.add_item(ct + 2, bottom)
-		edge_index.add_item(ct + 3, left)
-
-		corner_left_top = np.concatenate([left, top])
-		corner_top_right = np.concatenate([top, right])
-		corner_right_bottom = np.concatenate([right, bottom])
-		corner_bottom_left = np.concatenate([bottom, left])
-		# adding one to each edge to avoid zero vector (which annoy doesn't handle)
-		corner_index.add_item(ct, corner_left_top)
-		corner_index.add_item(ct + 1, corner_top_right)
-		corner_index.add_item(ct + 2, corner_right_bottom)
-		corner_index.add_item(ct + 3, corner_bottom_left)
-		# identifiers[ct] = [idx, 0]
-		# identifiers[ct + 1] = [idx, 1]
-		# identifiers[ct + 2] = [idx, 2]
-		# identifiers[ct + 3] = [idx, 3]
-		ct += 4
-	corner_index.build(10)  # 10 trees
-	edge_index.build(10)  # 10 trees
-
-	corner_index.save(filename_corners)
-	edge_index.save(filename_edges)
-
-	return corner_index, edge_index, identifiers
-
-def generate_edge_hash(images, filename):
-	engine = AnnoyIndex(images.shape[1], metric='euclidean')  # Length of item vector that will be indexed
-
-	full_filename = os.path.join(os.getcwd(), filename)
-	if os.path.isfile(full_filename):
-		engine.load(full_filename)
-
-		identifiers = np.column_stack((np.floor(np.arange(0, num_images, 0.25)), np.tile(range(4), (1, num_images))[0]))
-		return engine, identifiers
-
-	identifiers = np.empty((4 * num_images, 2), dtype=int)
-	ct = 0
-	for idx, image in enumerate(tqdm(images)):
-		# for i in xrange(1000):
-		(top, right, bottom, left) = get_all_edges_from_array(image)
-
-		# adding one to each edge to avoid zero vector (which annoy doesn't handle)
-		engine.add_item(ct,   top)
-		engine.add_item(ct+1, right)
-		engine.add_item(ct+2, bottom)
-		engine.add_item(ct+3, left)
-		identifiers[ct  ] = [idx, 0]
-		identifiers[ct+1] = [idx, 1]
-		identifiers[ct+2] = [idx, 2]
-		identifiers[ct+3] = [idx, 3]
-		ct += 4
-	engine.build(10)  # 10 trees
-	if not os.path.isfile(full_filename):
-		engine.save(filename)
-
-	return engine, identifiers
-
-def generate_corner_hash(images, filename):
-	engine = AnnoyIndex(2*images.shape[1], metric='euclidean')  # Length of item vector that will be indexed
-
-	full_filename = os.path.join(os.getcwd(), filename)
-
-	if os.path.isfile(full_filename):
-		engine.load(full_filename)
-
-		identifiers = np.column_stack((np.floor(np.arange(0, num_images, 0.25)), np.tile(range(4), (1, num_images))[0]))
-		return engine, identifiers
-
-	identifiers = np.empty((4 * num_images, 2), dtype=int)
-	ct = 0
-	for idx, image in enumerate(tqdm(images)):
-		# for i in xrange(1000):
-		(top, right, bottom, left) = get_all_edges_from_array(image)
-
-		corner_left_top = np.concatenate([left, top])
-		corner_top_right = np.concatenate([top, right])
-		corner_right_bottom = np.concatenate([right, bottom])
-		corner_bottom_left = np.concatenate([bottom, left])
-		# adding one to each edge to avoid zero vector (which annoy doesn't handle)
-		engine.add_item(ct,   corner_left_top)
-		engine.add_item(ct+1, corner_top_right)
-		engine.add_item(ct+2, corner_right_bottom)
-		engine.add_item(ct+3, corner_bottom_left)
-		identifiers[ct  ] = [idx, 0]
-		identifiers[ct+1] = [idx, 1]
-		identifiers[ct+2] = [idx, 2]
-		identifiers[ct+3] = [idx, 3]
-		ct += 4
-	engine.build(10)  # 10 trees
-	if not os.path.isfile(full_filename):
-		engine.save(filename)
-
-	return engine, identifiers
-
-def get_nearest_edges(engine, edge, num_results=10000, max_distance=100000):
-	# adding one to edge to avoid zero vector (which annoy doesn't handle)
-	(nn_idxs, nn_dists) = engine.get_nns_by_vector(edge, num_results, include_distances=True)
-	#filter results by distances
-	nearest_edge_idxs, distances = zip(* [[e, d] for e, d in zip(nn_idxs, nn_dists) if d <= max_distance ])
-
-	return list(nearest_edge_idxs), list(distances)
-
-def get_nearest_corners(engine, corner, num_results=10000, max_distance=100000):
-	# adding one to edge to avoid zero vector (which annoy doesn't handle)
-	(nn_idxs, nn_dists) = engine.get_nns_by_vector(corner, num_results, include_distances=True)
-	#filter results by distances
-	nearest_corner_idxs, distances = zip(* [[e, d] for e, d in zip(nn_idxs, nn_dists) if d <= max_distance ])
-
-	return list(nearest_corner_idxs), list(distances)
-
+#random.seed(42)
 
 #######################################################################################################################
 # return a particular edge from image array
@@ -308,11 +175,13 @@ def get_annotations(tiles_w, image_size, indices, coordinates):
 		x = index % tiles_w
 		y = int(np.floor(index / tiles_w))
 
-		tile = indices[index]
+		tile = int(indices[index])
 		if tile == -1:
 			continue
 		else:
 			(lat, lon) = coordinates[tile]
+			if np.isnan(lat) or np.isnan(lon):
+				continue
 			fc = lonlat2rgba(lon, lat)
 			rect = mpatches.Rectangle((x * image_size, y * image_size), image_size, image_size)
 			patches.append(rect)
@@ -407,13 +276,6 @@ def generate_map(tiles_w, tiles_h):
 			top_all_water = np.array_equal(tile_top_bottom_edge, np.zeros(image_size))
 			top_all_land = np.array_equal(tile_top_bottom_edge, 255*np.ones(image_size))
 
-		# if left_all_water and top_all_water and np.random.rand(1) < 0.9:  # 70% chance of all water tile
-		# 	select_tile(all_water, current_index, -1, 0, canvas, indices, success)
-		# 	continue
-		# elif left_all_land and top_all_land and np.random.rand(1) < 0.95:  # 95% chance of all land tile
-		# 	select_tile(all_land, current_index, -1, 0, canvas, indices, success)
-		# 	continue
-
 		if x == 0:  # handle first column (disregard left neighbor)
 			list_idxs_y, distances_y = get_nearest_edges(edge_hash, tile_top_bottom_edge, num_results=max_results, max_distance=max_distance)
 			matches_y, orientations = zip(*identifiers[list_idxs_y])
@@ -429,17 +291,21 @@ def generate_map(tiles_w, tiles_h):
 			num_best = len(best_matches_y)
 			if num_best > 0:
 				random_tile = best_matches_y[int(random.choice(range(num_best)))] # randomly pick one of selected tiles
-				index = random_tile[0]
+				index = int(random_tile[0])
 				orientation = int(random_tile[1])
 
-				# write selected tile to canvas
-				select_tile(images[index], current_index, index, orientation, canvas, indices, success)
+				if top_all_water and random.random() > 0.0625:
+					select_tile(all_water, current_index, num_images, 0, canvas, indices, success)
+				elif top_all_land and random.random() > 0.0625:
+					select_tile(all_land, current_index, num_images+1, 0, canvas, indices, success)
+				else:
+					# write selected tile to canvas
+					select_tile(images[index], current_index, index, orientation, canvas, indices, success)
 				continue
 		elif y == 0:  # handle first row (disregard top neighbor)
 
 			list_idxs_x, distances_x = get_nearest_edges(edge_hash, tile_left_right_edge, num_results=max_results, max_distance=max_distance)
 			matches_x, orientations = zip(*identifiers[list_idxs_x])
-			#matches_x_dict = dict(zip(matches_x, zip(orientations, distances_x)))
 
 			best_matches_x = []
 			for idx, tile in enumerate(matches_x):  # find all eligible tiles that have similar low distance
@@ -451,11 +317,16 @@ def generate_map(tiles_w, tiles_h):
 			num_best = len(best_matches_x)
 			if num_best > 0:
 				random_tile = best_matches_x[int(random.choice(range(num_best)))]  # randomly pick one of selected tiles
-				index = random_tile[0]
+				index = int(random_tile[0])
 				orientation = int( (  random_tile[1] + 1 ) % 4 )
 
-				# write selected tile to canvas
-				select_tile(images[index], current_index, index, orientation, canvas, indices, success)
+				if left_all_water and random.random() > 0.0625:
+					select_tile(all_water, current_index, num_images, 0, canvas, indices, success)
+				elif left_all_land and random.random() > 0.0625:
+					select_tile(all_land, current_index, num_images+1, 0, canvas, indices, success)
+				else:
+					# write selected tile to canvas
+					select_tile(images[index], current_index, index, orientation, canvas, indices, success)
 				continue
 		else:
 			corner = np.concatenate([tile_left_right_edge, tile_top_bottom_edge])
@@ -472,26 +343,54 @@ def generate_map(tiles_w, tiles_h):
 			num_best = len(best_matches)
 			if num_best > 0:
 				random_tile = best_matches[int(random.choice(range(num_best)))]  # randomly pick one of selected tiles
-				index = random_tile[0]
+				index = int(random_tile[0])
 				orientation = int(random_tile[1])
-				select_tile(images[index], current_index, index, orientation, canvas, indices, success)
-				continue
-		#find tile that fits left and top edge
-		#common_index, orientation = find_matching_tile(matches_x_dict, matches_y_dict, indices)
 
-		# if common_index > -1: # found tile
-		# 	select_tile(images[common_index], current_index, common_index, orientation, canvas, indices, success)
-		# 	continue
-		# else:
+				if left_all_water and top_all_water and random.random() > 0.025:
+					select_tile(all_water, current_index, num_images, 0, canvas, indices, success)
+				elif left_all_land and top_all_land and random.random() > 0.025:
+					select_tile(all_land, current_index, num_images + 1, 0, canvas, indices, success)
+				else:
+					select_tile(images[index], current_index, index, orientation, canvas, indices, success)
+				continue
 
 		# do stochastic backtracking
 		failure = backtrack(failure, current_index, success, indices)
 	return canvas, indices
 
+def fill_hole(npimage, pos):
+
+	top    = npimage[pos[1], pos[0]:pos[0]+image_size]  # TOP
+	right  = npimage[pos[1]:pos[1]+image_size, pos[0]+image_size]  # RIGHT
+	bottom = np.flip(npimage[pos[1]+image_size, pos[0]:pos[0]+image_size], 0)  # BOTTOM, flip to preserve clockwise order
+	left   = np.flip(npimage[pos[1]:pos[1]+image_size, pos[0]], 0)  # LEFT, flip to preserve clockwise order
+
+	edges = np.concatenate([top, right, bottom, left])
+	list_idxs, distances = get_nearest_tiles(tile_hash, edges, num_results=max_results, max_distance=max_distance)
+	matches, orientations = zip(*identifiers[list_idxs])
+
+	best_matches = []
+	for idx, tile in enumerate(matches):  # find all eligible tiles that have similar low distance
+		if distances[idx] > distances[0] + eps:
+			break
+
+		best_matches.append((tile, orientations[idx]))
+
+	num_best = len(best_matches)
+	if num_best > 0:
+		random_tile = best_matches[int(random.choice(range(num_best)))]  # randomly pick one of selected tiles
+		tile = images[int(random_tile[0])]
+		orientation = int(random_tile[1])
+		if orientation > 0:
+			tile = np.rot90(tile, orientation)
+		npimage[pos[1]:pos[1] + image_size, pos[0]:pos[0] + image_size] = tile
+
+	return npimage
+
 
 def save_map(canvas, tiles_w, tiles_h, pc):
 
-	timestr = time.strftime("%d_%m_%H%M")
+	timestr = time.strftime("%m_%d_%H%M")
 	filename = str(image_size) + 'x' + str(image_size) + '_' + timestr + '_' + str(tiles_w) + 'x' + str(tiles_h)
 
 	image = get_image_from_canvas(canvas, tiles_w, tiles_h)
@@ -512,44 +411,106 @@ def save_map(canvas, tiles_w, tiles_h, pc):
 #pr = cProfile.Profile()
 #pr.enable()
 
-
-database_path = 'coastlines_binary_64_images.hdf5'  # address of hdf5 data file ##'binary_test_data.hdf5'
-image_size = int(re.search(r'\d+', database_path).group()) #auto-extract integer from string
-hdf5_file = h5py.File(database_path , "r")
-
-# load images from hdf5
-images = hdf5_file["images"]
-coordinates = hdf5_file["coordinates"]
-num_images = images.shape[0]
-print('{} images found...'.format(num_images))
-
-# engine = generate_lsh(images)
-# engine = generate_nearpy_hash(images)
-
-corner_hash, edge_hash, identifiers = generate_hashes(images, "hash_database_" + str(image_size) + "_corners.ann", "hash_database_" + str(image_size) + "_edges.ann")
-#
-# edge_hash, edge_identifiers = generate_edge_hash(images, "hash_database_" + str(image_size) + "_edges.ann")
-# corner_hash, corner_identifiers = generate_corner_hash(images, "hash_database_" + str(image_size) + "_corners.ann")
-
 # parameters
 max_distance = 4096 #1024#
 max_results = 10000
 eps = 15
-my_dpi = 140  # screen dpi
 failure_threshold = 7
 
-tiles_w = 30
-tiles_h = 30
-# while tiles_w < 31: #LOOooooOOOOoooOP
-#tiles_h = round(tiles_w * (2/3))
+#######################################################################################################################
+## hole filling
 
-fig = plt.figure(figsize=((image_size * tiles_h)/1000, (image_size * tiles_w)/1000), dpi=200)
-plt.axis('off')
-canvas, indices = generate_map(tiles_w, tiles_h)
+databases_path = ['data/coastlines_binary_cleaned_256_images.hdf5', 'data/coastlines_binary_cleaned_128_images.hdf5', 'data/coastlines_binary_cleaned_64_images.hdf5', 'data/coastlines_binary_cleaned_32_images.hdf5']  # address of hdf5 data file ##'binary_test_data.hdf5'
 
-pc = get_annotations(tiles_w, image_size, indices, coordinates)
-save_map(canvas, tiles_w, tiles_h, pc)
+filename = 'coastlines_input_samples\\fakemap_hires.png'
+original_img = Image.open(filename).convert("RGB")
+oWidth, oHeight = original_img.size
 
-#pr.disable()
-# after your program ends
-#pr.print_stats(sort="cumtime")
+image = np.array(original_img)
+image = image[:, :, 0]
+
+for database_path in databases_path:
+	image_size = int(re.search(r'\d+', database_path).group()) #auto-extract integer from string
+	hdf5_file = h5py.File(database_path , "r")
+
+	# load images from hdf5
+	images = np.array(hdf5_file["images"])
+	coordinates = np.array(hdf5_file["coordinates"])
+	num_images = images.shape[0]
+
+	print('{} images found...'.format(num_images))
+
+	all_water = np.zeros((image_size, image_size))
+	all_land = 255 * np.ones((image_size, image_size))
+
+	images = np.concatenate([images, np.stack((all_water, all_land))])
+	coordinates = np.concatenate([coordinates, np.stack(((np.nan, np.nan), (np.nan, np.nan)))])
+
+	tile_hash, identifiers = generate_tile_hash(images, "data/hash_database_" + str(image_size) + "_tiles.ann")
+
+	#data_dir = 'coastlines_input_samples/'
+	#filenames = list(glob.glob(data_dir + '*.png'))
+	# for filename in filenames:
+
+
+	#ticks = [32, 192, 352]
+	ticks_x = np.arange(0, int(np.floor(oWidth/image_size) * image_size), image_size)
+	ticks_y = np.arange(0, int(np.floor(oHeight/image_size) * image_size), image_size)
+	#ticks_y = [0, 127, 255, 383]
+
+	for x in ticks_x:
+		for y in ticks_y:
+			pos = (x, y)
+			draw = ImageDraw.Draw(original_img)
+			draw.rectangle((pos, (pos[0]+image_size, pos[1]+image_size)), outline="red")
+			#original_img.show()
+
+			tile = image[pos[1]:pos[1]+image_size, pos[0]:pos[0]+image_size]
+			if np.array_equal(tile, all_water) or np.array_equal(tile, all_land): #don't replace those
+				continue
+
+			image = fill_hole(image, pos)
+
+
+hole_filled_img = Image.fromarray(image)
+new_im = Image.new('RGB', (2*oWidth, oHeight))
+
+new_im.paste(original_img, (0, 0))
+new_im.paste(hole_filled_img, (oWidth, 0))
+
+#new_im.show()
+
+timestr = time.strftime("%m_%d_%H%M")
+
+filename = filename.split('\\')[1]
+filename = filename.split('.')[0]
+#m = re.match(r'coastlines_input_samples\\sample_(.*).png', filename)
+#m = re.match(r'coastlines_terrain_binary/14_(.*),(.*)_terrain.png', filename)
+#num = str(float(m.group(1)))
+#lat = str(float(m.group(1)))
+#lon = str(float(m.group(2)))
+#new_im.save("results/hole_fill_"+lat+","+lon+"_"+timestr+".png", "PNG")
+new_im.save("results/hole_fill_"+filename+"_"+timestr+".png", "PNG")
+
+#######################################################################################################################
+## map generating
+# target_width = 4096
+# target_height = 2048
+#
+# tiles_w = int(np.floor(target_width / image_size))#30
+# tiles_h = int(np.floor(target_height / image_size))#20
+# #tiles_h = round(tiles_w * (2/3))
+#
+# fig = plt.figure(figsize=((image_size * tiles_h)/1000, (image_size * tiles_w)/1000), dpi=200)
+# plt.axis('off')
+#
+# corner_hash, edge_hash, identifiers = generate_hashes(images, "data/hash_database_" + str(image_size) + "_corners.ann", "data/hash_database_" + str(image_size) + "_edges.ann")
+# canvas, indices = generate_map(tiles_w, tiles_h)
+#
+# pc = get_annotations(tiles_w, image_size, indices, coordinates)
+# save_map(canvas, tiles_w, tiles_h, pc)
+
+######################################################################################################################
+# pr.disable()
+# #after your program ends
+# pr.print_stats(sort="cumtime")
