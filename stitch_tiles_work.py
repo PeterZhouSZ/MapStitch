@@ -387,6 +387,41 @@ def fill_hole(npimage, pos):
 
 	return npimage
 
+def fill_hole_satellite(original, binary_image, satellite_image, pos):
+
+	top    = original[pos[1], pos[0]:pos[0]+image_size]  # TOP
+	right  = original[pos[1]:pos[1]+image_size, pos[0]+image_size-1]  # RIGHT
+	bottom = np.flip(original[pos[1]+image_size-1, pos[0]:pos[0]+image_size], 0)  # BOTTOM, flip to preserve clockwise order
+	left   = np.flip(original[pos[1]:pos[1]+image_size, pos[0]], 0)  # LEFT, flip to preserve clockwise order
+
+	edges = np.concatenate([top, right, bottom, left])
+	list_idxs, distances = get_nearest_tiles(tile_hash, edges, num_results=max_results, max_distance=max_distance)
+	matches, orientations = zip(*identifiers[list_idxs])
+
+	best_matches = []
+	for idx, tile in enumerate(matches):  # find all eligible tiles that have similar low distance
+		if distances[idx] > distances[0] + eps:
+			break
+
+		best_matches.append((tile, orientations[idx]))
+
+	num_best = len(best_matches)
+	if num_best > 0:
+		random_tile = best_matches[int(random.choice(range(num_best)))]  # randomly pick one of selected tiles
+		satellite_tile = sat_images[int(random_tile[0])]
+		binary_tile = images[int(random_tile[0])]
+		orientation = int(random_tile[1])
+
+		if orientation > 0:
+			satellite_tile = np.rot90(satellite_tile, orientation)
+			binary_tile = np.rot90(binary_tile, orientation)
+
+		#print(tile.shape)
+
+		binary_image[pos[1]:pos[1] + image_size, pos[0]:pos[0] + image_size] = binary_tile
+		satellite_image[pos[1]:pos[1] + image_size, pos[0]:pos[0] + image_size] = satellite_tile
+
+	return binary_image, satellite_image
 
 def save_map(canvas, tiles_w, tiles_h, pc):
 
@@ -420,9 +455,9 @@ failure_threshold = 7
 #######################################################################################################################
 ## hole filling
 
-databases_path = ['data/coastlines_binary_cleaned_256_images.hdf5', 'data/coastlines_binary_cleaned_128_images.hdf5', 'data/coastlines_binary_cleaned_64_images.hdf5', 'data/coastlines_binary_cleaned_32_images.hdf5']  # address of hdf5 data file ##'binary_test_data.hdf5'
+databases_path = ['data/coastlines_binary_satellite_128_images.hdf5']#['data/coastlines_binary_cleaned_256_images.hdf5', 'data/coastlines_binary_cleaned_128_images.hdf5', 'data/coastlines_binary_cleaned_64_images.hdf5', 'data/coastlines_binary_cleaned_32_images.hdf5']  # address of hdf5 data file ##'binary_test_data.hdf5'
 
-filename = 'coastlines_input_samples\\fakemap_hires.png'
+filename = 'exemplars\\Hong_Kong.png'
 original_img = Image.open(filename).convert("RGB")
 oWidth, oHeight = original_img.size
 
@@ -435,6 +470,7 @@ for database_path in databases_path:
 
 	# load images from hdf5
 	images = np.array(hdf5_file["images"])
+	sat_images = np.array(hdf5_file["satellite"])
 	coordinates = np.array(hdf5_file["coordinates"])
 	num_images = images.shape[0]
 
@@ -443,10 +479,11 @@ for database_path in databases_path:
 	all_water = np.zeros((image_size, image_size))
 	all_land = 255 * np.ones((image_size, image_size))
 
-	images = np.concatenate([images, np.stack((all_water, all_land))])
-	coordinates = np.concatenate([coordinates, np.stack(((np.nan, np.nan), (np.nan, np.nan)))])
+	#images = np.concatenate([images, np.stack((all_water, all_land))])
+	#coordinates = np.concatenate([coordinates, np.stack(((np.nan, np.nan), (np.nan, np.nan)))])
 
-	tile_hash, identifiers = generate_tile_hash(images, "data/hash_database_" + str(image_size) + "_tiles.ann")
+	#tile_hash, identifiers = generate_tile_hash(images, "data/hash_database_" + str(image_size) + "_tiles.ann")
+	tile_hash, identifiers = generate_tile_hash(images, "data/hash_database_satellite_" + str(image_size) + "_tiles.ann")
 
 	#data_dir = 'coastlines_input_samples/'
 	#filenames = list(glob.glob(data_dir + '*.png'))
@@ -458,6 +495,8 @@ for database_path in databases_path:
 	ticks_y = np.arange(0, int(np.floor(oHeight/image_size) * image_size), image_size)
 	#ticks_y = [0, 127, 255, 383]
 
+	satellite_image = np.zeros((oHeight, oWidth, 3), dtype=np.uint8)
+	binary_image = np.zeros((oHeight, oWidth), dtype=np.uint8)
 	for x in ticks_x:
 		for y in ticks_y:
 			pos = (x, y)
@@ -466,17 +505,20 @@ for database_path in databases_path:
 			#original_img.show()
 
 			tile = image[pos[1]:pos[1]+image_size, pos[0]:pos[0]+image_size]
-			if np.array_equal(tile, all_water) or np.array_equal(tile, all_land): #don't replace those
-				continue
+			#if np.array_equal(tile, all_water) or np.array_equal(tile, all_land): #don't replace those
+			#	continue
 
-			image = fill_hole(image, pos)
+			#image = fill_hole(image, pos)
+			new_image = fill_hole_satellite(image, binary_image, satellite_image, pos)
 
-
-hole_filled_img = Image.fromarray(image)
-new_im = Image.new('RGB', (2*oWidth, oHeight))
+#print(new_image.shape)
+#new_image = np.stack((new_image, new_image, np.zeros((oHeight, oWidth), dtype=np.uint8)), 2)
+#print(new_image.shape)
+new_im = Image.new('RGB', (3*oWidth, oHeight))
 
 new_im.paste(original_img, (0, 0))
-new_im.paste(hole_filled_img, (oWidth, 0))
+new_im.paste(Image.fromarray(binary_image), (oWidth, 0))
+new_im.paste(Image.fromarray(satellite_image), (2*oWidth, 0))
 
 #new_im.show()
 

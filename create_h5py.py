@@ -70,20 +70,28 @@ import matplotlib.pyplot as plt
 # print('...finished creating hdf5')
 
 #check contents of h5py
-hdf5_path = 'coastlines_binary_128_images.hdf5'  # address to where you want to save the hdf5 file
+hdf5_path = 'data/coastlines_binary_satellite_128_images.hdf5'  # address to where you want to save the hdf5 file
 hdf5_file = h5py.File(hdf5_path, "r")
 # Total number of samples
 images = hdf5_file["images"]
+
+sat_images = hdf5_file["satellite"]
 max_val = np.amax(images)
 min_val = np.amin(images)
 print('img range: {} {}'.format(min_val, max_val))
 
-idx = np.random.randint(0, images.shape[0], size=16)
+idx = np.random.randint(0, images.shape[0], size=36)
 #idx = range(16)
 #plt.figure()
-fig, axes = plt.subplots(4, 4, sharex=True, sharey=True, figsize=(14, 14), )
+fig, axes = plt.subplots(6, 6, sharex=True, sharey=True, figsize=(14, 14), )
+i = 0
 for ii, ax in zip(idx, axes.flatten()):
-	ax.imshow(images[ii], aspect='equal', cmap='gray')  # [:,:,:]
+	if i % 2 == 0:
+		show = images[idx[int(i/2)]]
+	else:
+		show = sat_images[idx[int(i/2)]]
+	i+= 1
+	ax.imshow(show, aspect='equal', cmap='gray')  # [:,:,:]
 	ax.xaxis.set_visible(False)
 	ax.yaxis.set_visible(False)
 plt.subplots_adjust(wspace=0, hspace=0)
