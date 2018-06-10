@@ -109,3 +109,6 @@ ENV/
 /output
 /*.ann
 /*.hdf5
+*.png
+*.hdf5
+*.ann

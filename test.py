@@ -187,60 +187,86 @@ if __name__ == "__main__":
 	# print(d)
 	#
 	# !/usr/bin/env python
-	'''
-	Color parts of a line based on its properties, e.g., slope.
-	'''
+
+	import cv2
 	import numpy as np
-	import matplotlib.pyplot as plt
-	from matplotlib.collections import LineCollection
-	from matplotlib.colors import ListedColormap, BoundaryNorm
 
-	x = np.linspace(0, 3 * np.pi, 500)
-	y = np.sin(x)
-	z = np.cos(0.5 * (x[:-1] + x[1:]))  # first derivative
 
-	# Create a colormap for red, green and blue and a norm to color
-	# f' < -0.5 red, f' > 0.5 blue, and the rest green
-	cmap = ListedColormap(['r', 'g', 'b'])
-	norm = BoundaryNorm([-1, -0.5, 0.5, 1], cmap.N)
 
-	# Create a set of line segments so that we can color them individually
-	# This creates the points as a N x 1 x 2 array so that we can stack points
-	# together easily to get the segments. The segments array for line collection
-	# needs to be numlines x points per line x 2 (x and y)
-	points = np.array([x, y]).T.reshape(-1, 1, 2)
-	segments = np.concatenate([points[:-1], points[1:]], axis=1)
+	blendMode = cv2.NORMAL_CLONE
+	tiles_w = 32
+	tiles_h = 16
+	image_size = 64
+	half_tile = int(image_size / 2)  # 32
 
-	# Create the line collection object, setting the colormapping parameters.
-	# Have to set the actual values used for colormapping separately.
-	lc = LineCollection(segments, cmap=cmap, norm=norm)
-	lc.set_array(z)
-	lc.set_linewidth(3)
+	margin = half_tile
 
-	fig1 = plt.figure()
-	plt.xkcd()
-	plt.gca().add_collection(lc)
-	plt.xlim(x.min(), x.max())
-	plt.ylim(-1.1, 1.1)
+	# Read images : src image will be cloned into dst
+	#r = 18*np.ones((image_size * tiles_h, image_size * tiles_w), dtype='uint8')
+	#g = 32*np.ones((image_size * tiles_h, image_size * tiles_w), dtype='uint8')
+	#b = 58*np.ones((image_size * tiles_h, image_size * tiles_w), dtype='uint8')
+	#image = np.stack((b, g, r), 2)
+	path = 'output/64x64_water_image_05_07_1534_32x16.png' #"output/64x64_water_image_05_07_1855_32x16a.png"
+	image = cv2.imread(path)#255*np.ones((image_size * tiles_h, image_size * tiles_w, 3), dtype='uint8')#
+	#image = cv2.GaussianBlur(image, (15, 15), 0, 0)
+	#cv2.imwrite("output/gaussian-blur-example.jpg", image)
+	#image[:,:,:] = image[:,:,:] * [18,32,58]
+	obj = cv2.imread(path)
+	image = cv2.resize(image, (tiles_w*image_size, tiles_h*image_size))
+	cv2.imwrite(path, image)
+	obj = cv2.resize(obj, (tiles_w*image_size, tiles_h*image_size))
+	margin_inside = 2
+	mask = 255 * np.ones((image_size + 2 * margin, image_size + 2 * margin), dtype='uint8')
+	mask[margin+margin_inside:-margin-margin_inside, margin+margin_inside:-margin-margin_inside] = 255 * np.zeros((image_size-2*margin_inside, image_size-2*margin_inside), dtype='uint8')
 
-	# Now do a second plot coloring the curve using a continuous colormap
-	t = np.linspace(0, 10, 200)
-	x = np.cos(np.pi * t)
-	y = np.sin(t)
-	points = np.array([x, y]).T.reshape(-1, 1, 2)
-	segments = np.concatenate([points[:-1], points[1:]], axis=1)
+	masked_source = 255 * np.ones((image_size + 2 * margin, image_size + 2 * margin, 3), dtype='uint8')
 
-	lc = LineCollection(segments, cmap=plt.get_cmap('copper'),
-						norm=plt.Normalize(0, 10))
-	lc.set_array(t)
-	lc.set_linewidth(3)
+	print((image.shape))
+	print((obj.shape))
+	for y in np.arange(1,tiles_h-1):
+		for x in np.arange(1, tiles_w-1):
+	#for index in range(tiles_w*tiles_h):
+	#	x = index % tiles_w
+	#	y = int(np.floor(index / tiles_w))
+			source = obj[y * image_size:(y + 1) * image_size, x * image_size:(x + 1) * image_size]
 
-	fig2 = plt.figure()
-	plt.xkcd()
-	plt.gca().add_collection(lc)
-	plt.xlim(-1, 1)
-	plt.ylim(-1, 1)
-	plt.show()
+	#if x == 0 or x == tiles_w-1 or y == 0 or y == tiles_h-1:
+			#	image[y * image_size:(y + 1) * image_size, x * image_size:(x + 1) * image_size] = source
+			#	continue
+
+			masked_source[margin:-margin, margin:-margin] = source
+			# beginx = 0
+			# endx = 0
+			# beginy = 0
+			# endy = 0
+			# #if x == 0: #do not blend left
+			# #	beginx = margin
+			# if x < tiles_w-2: #do not blend right
+			# 	endx = -margin #do not blend right
+			# #if y == 0:
+			# #	beginy = margin
+			# if y < tiles_h-2:
+			# 	endy = -margin #do not blend bottom
+			# #mask.fill(255)
+			#
+			# selection_source = masked_source[beginy:endy, beginx:endx]
+			# selection_mask = mask[beginy:endy, beginx:endx]
+
+			if blendMode is not None:
+				#poisson blend
+				#center = (min(y * image_size + half_tile, max_center_h), min(x * image_size + half_tile, max_center_w))
+				#center = (min(x * image_size + half_tile, max_center_w), min(y * image_size + half_tile, max_center_h))
+				#center = (x * image_size + half_tile, y * image_size + half_tile)
+				center = (x * image_size + half_tile, y * image_size + half_tile)
+				#center = (beginx + int((endx - beginx + 1) / 2), beginy + int((endy - beginy + 1) / 2))
+				#print(center)
+				#masked_source[margin:-margin, margin:-margin] = source
+				# masked_source = obj[y * image_size-margin:(y + 1) * image_size+margin, x * image_size-margin:(x + 1) * image_size+margin]
+				image = cv2.seamlessClone(masked_source, image, mask, center, blendMode)
+			else:
+				image[y * image_size:(y + 1) * image_size, x * image_size:(x + 1) * image_size] = source
+	outpath = path.split('.')[0] + '_gradient.png'
+	cv2.imwrite(outpath, image)
 
 	#print(np.tile(range(3), (1, 10)))
 	#

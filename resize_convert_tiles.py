@@ -68,7 +68,7 @@ if __name__ == "__main__":
 	create_dir(directory_128)
 	create_dir(directory_256)
 
-	directory = 'coastlines_satellite_terrain'#\\terrain'
+	directory = 'coastlines_15'#\\terrain'
 	files = list(glob.iglob(directory+'/*.png' ))
 	num_images = len(files)
 	
@@ -76,35 +76,23 @@ if __name__ == "__main__":
 	printProgressBar(0, num_images, prefix = 'Progress:', suffix = 'complete', length = 50)
 	
 	for idx, filename in enumerate(files):#glob.glob('coastlines_terrain_14/*.png'): #assuming png format
-		m = re.match(r'coastlines_satellite_terrain\\14_(.*).png', filename)
+		m = re.match(r'coastlines_15\\15_(.*)_(.*).png', filename)
 		coords = str(m.group(1))
-		type = "satellite"#str(m.group(2))
-		new_filename = "coastlines_satellite_terrain\\"+type+"\\14_"+coords+".png"
+		type = str(m.group(2))
+		new_filename = "coastlines_15\\"+type+"\\15_"+coords+".png"
 		os.rename(filename, new_filename)
 
 		filename = new_filename
 		image = Image.open(filename)
 		#print(image.mode)
+
 		image = image.convert('RGB')
-		#image_list.append(img)
-		#filename_list.append(filename.split('\\')[1])
-
-	#for idx in range(num_images):
-		#image = image_list[idx]
-
-		##convert to numpy array for cv2
-		#cimage = image.convert("RGB")
-		#npimage = np.array(cimage)
-		#image = image.fromArray(npimage)
-		##mask blue parts in image
-		#blue_mask = cv2.inRange(npimage, WATER_MIN_TERRAIN, WATER_MAX_TERRAIN)
-
-		#if not strictly_coastline(blue_mask, image.size):
-		#	continue
-
-		#image = convert_tile_to_binary(npimage, blue_mask)
-		# image_128 = resize_tile(image, 128, 128)
-		# image_128.save(os.path.join(directory_128, filename.split('\\')[1]), 'PNG')
+		# if type == 'terrain':
+		# 	#convert to numpy array for cv2
+		# 	npimage = np.array(image)
+		# 	#mask blue parts in image
+		# 	blue_mask = cv2.inRange(npimage, WATER_MIN_TERRAIN, WATER_MAX_TERRAIN)
+		# 	image = convert_tile_to_binary(npimage, blue_mask)
 
 		image = resize_tile(image, 512, 512)
 		image.save(filename)#os.path.join(directory+"/"+type, filename.split('\\')[-1]), 'PNG')
